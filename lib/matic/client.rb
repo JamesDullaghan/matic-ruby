@@ -1,3 +1,6 @@
+require 'net/http'
+require 'uri'
+
 module Matic
   class Client
     class << self
@@ -20,7 +23,7 @@ module Matic
       @private_key = Matic::Client.private_key || opts.fetch(:private_key) { missing_argument(:private_key) }
       @post_body   = opts.fetch(:post_body, "")
       # PROVIDE AN UPPERCASE REQUEST METHOD
-      @curl_method    = opts.fetch(:curl_method) { :get }
+      @method    = opts.fetch(:method) { :get }
       @request_method = opts.fetch(:request_method) { "GET" }
       @api_endpoint   = opts.fetch(:api_endpoint) { missing_argument(:api_endpoint) }
     end
@@ -42,20 +45,29 @@ module Matic
     end
 
     def perform
-      c = Curl::Easy.new(url)
-      c.headers = default_headers
+      uri = URI.parse(url)
 
-      case curl_method
-      when :put, :delete
-        c.put_data = post_body
-      when :post
-        c.multipart_form_post = true
-        c.post_body = post_body
+      http = Net::HTTP.new(uri.host, uri.port)
+      klass = "Net::HTTP::#{curl_method.to_s.capitalize}"
+
+      request = Object.const_get(klass).new(uri.request_uri)
+
+      case method
+      when :post, :put, :delete
+        request.body = post_body
       end
 
+      http.use_ssl = true
+      http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+
+      request["X-Client"] = client_name
+      request["X-Timestamp"] = timestamp
+      request["X-Signature"] = signature
+      request['Content-Type'] = 'application/json'
+      request['Accept'] = 'application/json'
+
       if verified?
-        c.http(curl_method)
-        c
+        http.request(request)
       else
         raise Matic::UnexpectedResponseBody, "Cannot verify signature"
       end
@@ -71,13 +83,13 @@ module Matic
                          when :get then "GET"
                          end
 
-      if opts[:body] && !opts[:body].is_a?(String)
-        fail Matic::UnexpectedResponseBody, "body should be nil or a JSON string"
-      end
+      # if opts[:body] && !opts[:body].is_a?(String)
+      #   fail Matic::UnexpectedResponseBody, "body should be nil or a JSON string"
+      # end
 
       client = ::Matic::Client.new(
         post_body: opts[:body],
-        curl_method: method,
+        method: method,
         request_method: formatted_method,
         api_endpoint: path,
       )
@@ -129,31 +141,6 @@ module Matic
 
     def verified?
       key.verify(digest, signature, secret_string)
-    end
-
-    # API Service expects following headers along every request:
-    # X-Client: client_name from example above
-    # X-Timestamp: timestamp from example above
-    # X-Signature: signature from example above
-    # Authentication headers must be sent on each request
-    #
-    # @return [Hash]
-    def auth_headers
-      {
-        'X-Client' => client_name,
-        'X-Timestamp' => timestamp,
-        'X-Signature' => signature
-      }
-    end
-
-    # Default headers sent with each request
-    #
-    # @return [Hash]
-    def default_headers
-      {
-        'Content-Type' => 'application/json',
-        'Accept' => 'application/json'
-      }.merge(auth_headers)
     end
 
     def missing_argument(key)
