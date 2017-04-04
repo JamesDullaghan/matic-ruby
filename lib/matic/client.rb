@@ -13,18 +13,18 @@ module Matic
                 :client_name,
                 :private_key,
                 :post_body,
-                :curl_method,
+                :method,
                 :request_method,
                 :api_endpoint
 
     def initialize(opts = {})
-      @base_url    = Matic::Client.base_url || opts.fetch(:base_url) { missing_argument(:base_url) }
-      @client_name = Matic::Client.client_name || opts.fetch(:client_name) { missing_argument(:client_name) }
-      @private_key = Matic::Client.private_key || opts.fetch(:private_key) { missing_argument(:private_key) }
-      @post_body   = opts.fetch(:post_body, "")
+      @base_url       = Matic::Client.base_url || opts.fetch(:base_url) { missing_argument(:base_url) }
+      @client_name    = Matic::Client.client_name || opts.fetch(:client_name) { missing_argument(:client_name) }
+      @private_key    = Matic::Client.private_key || opts.fetch(:private_key) { missing_argument(:private_key) }
+      @post_body      = opts.fetch(:post_body, "")
       # PROVIDE AN UPPERCASE REQUEST METHOD
-      @method    = opts.fetch(:method) { :get }
-      @request_method = opts.fetch(:request_method) { "GET" }
+      @method         = opts.fetch(:method) { :get }
+      @request_method = opts.fetch(:request_method) { @method.upcase }
       @api_endpoint   = opts.fetch(:api_endpoint) { missing_argument(:api_endpoint) }
     end
 
@@ -48,7 +48,7 @@ module Matic
       uri = URI.parse(url)
 
       http = Net::HTTP.new(uri.host, uri.port)
-      klass = "Net::HTTP::#{curl_method.to_s.capitalize}"
+      klass = "Net::HTTP::#{method.to_s.capitalize}"
 
       request = Object.const_get(klass).new(uri.request_uri)
 
@@ -76,13 +76,6 @@ module Matic
     private
 
     def self.perform(path, method, opts = {})
-      formatted_method = case method
-                         when :post then "POST"
-                         when :put then "PUT"
-                         when :delete then "DELETE"
-                         when :get then "GET"
-                         end
-
       # if opts[:body] && !opts[:body].is_a?(String)
       #   fail Matic::UnexpectedResponseBody, "body should be nil or a JSON string"
       # end
@@ -90,7 +83,6 @@ module Matic
       client = ::Matic::Client.new(
         post_body: opts[:body],
         method: method,
-        request_method: formatted_method,
         api_endpoint: path,
       )
 
@@ -122,7 +114,7 @@ module Matic
     #
     # @return [Integer]
     def timestamp
-      @timestamp ||= Time.now.to_i
+      @timestamp ||= Time.now.to_i.to_s
     end
 
     # Private Key
@@ -136,11 +128,13 @@ module Matic
 
     # Signed Key
     def signature
-      @signature ||= key.sign(digest, secret_string)
+      @signature ||= key.sign(digest, secret_string).unpack('H*').first
     end
 
     def verified?
-      key.verify(digest, signature, secret_string)
+      verified_signature = [signature].pack('H*')
+
+      key.verify(digest, verified_signature, secret_string)
     end
 
     def missing_argument(key)
