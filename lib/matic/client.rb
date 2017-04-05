@@ -37,7 +37,13 @@ module Matic
     end
 
     def self.put(path, body, opts = {})
-      perform(path, :put, opts.merge(body: body))
+      meth = if opts[:method]
+        opts[:method]
+      else
+        :put
+      end
+
+      perform(path, meth, opts.merge(body: body))
     end
 
     def self.delete(path, body = nil)
@@ -53,7 +59,7 @@ module Matic
       request = Object.const_get(klass).new(uri.request_uri)
 
       case method
-      when :post, :put, :delete
+      when :post, :put, :patch, :delete
         request.body = post_body
       end
 
