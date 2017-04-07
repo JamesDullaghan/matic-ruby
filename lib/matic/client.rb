@@ -38,12 +38,12 @@ module Matic
 
     def self.put(path, body, opts = {})
       meth = if opts[:method]
-        opts[:method]
+        :patch
       else
         :put
       end
 
-      perform(path, meth, opts.merge(body: body))
+      perform(path, meth, body: body)
     end
 
     def self.delete(path, body = nil)
