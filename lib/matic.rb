@@ -1,5 +1,3 @@
-require 'curb'
-
 require "matic/version"
 require "matic/client"
 
